@@ -8,7 +8,7 @@ from models import Room
 
 router = APIRouter(tags=["websocket"])
 
-# room_id -> list of active WebSocket connections
+
 connections: Dict[str, List[WebSocket]] = {}
 
 
@@ -27,22 +27,18 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str):
 
     db = get_db_session()
     try:
-        # Send current code to newly joined client
         room = db.query(Room).filter(Room.id == room_id).first()
         if room and room.code:
             await websocket.send_text(room.code)
 
         while True:
-            # Receive full code from this client
             data = await websocket.receive_text()
 
-            # Update DB
             room = db.query(Room).filter(Room.id == room_id).first()
             if room:
                 room.code = data
                 db.commit()
 
-            # Broadcast to other clients in the same room
             for conn in connections[room_id]:
                 if conn is not websocket:
                     await conn.send_text(data)

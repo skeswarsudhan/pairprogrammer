@@ -2,18 +2,18 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from database import Base, engine
-from models import Room  # noqa: F401 (imported so metadata includes Room)
+from models import Room  
 from routers import autocomplete, rooms, websocket, run_code
 
-# Create tables in the database if they don't exist
+
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="Pair Programming Backend")
 
-# Allow frontend (e.g., React running on localhost:5173) to call this backend
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # in production, restrict this
+    allow_origins=["*"],  
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

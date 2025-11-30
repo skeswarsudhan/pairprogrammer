@@ -31,7 +31,7 @@ Return plain code only, no explanations or comments.
 def autocomplete(req: AutoRequest):
     try:
         completion = client.chat.completions.create(
-            model="llama-3.1-8b-instant",  # change if you prefer a different Groq model
+            model="llama-3.1-8b-instant",  
             messages=[
                 {"role": "system", "content": SYSTEM_PROMPT},
                 {

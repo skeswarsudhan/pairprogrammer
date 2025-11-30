@@ -19,7 +19,7 @@ def run_code(req: RunRequest):
     try:
         payload = {
             "language": req.language,
-            "version": "*",  # latest version
+            "version": "*",  
             "files": [
                 {"content": req.code}
             ]
