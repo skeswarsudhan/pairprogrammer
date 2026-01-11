@@ -1,15 +1,28 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
+from sqlalchemy.orm import Session
 
 from groq_client import client
+from database import SessionLocal
+from models import Room
 
 router = APIRouter(prefix="/autocomplete", tags=["autocomplete"])
+
+
+def get_db():
+    """Database session dependency."""
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
 
 
 class AutoRequest(BaseModel):
     code: str
     cursorPosition: int
     language: str
+    room_id: str  # Added room_id to check AI autocomplete settings
 
 
 class AutoResponse(BaseModel):
@@ -28,7 +41,19 @@ Return plain code only, no explanations or comments.
 
 
 @router.post("", response_model=AutoResponse)
-def autocomplete(req: AutoRequest):
+def autocomplete(req: AutoRequest, db: Session = Depends(get_db)):
+    # Check if room exists and AI autocomplete is enabled
+    room = db.query(Room).filter(Room.id == req.room_id).first()
+    
+    if not room:
+        raise HTTPException(status_code=404, detail="Room not found")
+    
+    if not room.ai_autocomplete_enabled:
+        raise HTTPException(
+            status_code=403, 
+            detail="AI autocomplete is disabled for this room"
+        )
+    
     try:
         completion = client.chat.completions.create(
             model="llama-3.1-8b-instant",  

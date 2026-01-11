@@ -3,3 +3,5 @@
 /.env
 /backend
 /.gitignore
+/API_TESTING.md
+/migrate_db.py
