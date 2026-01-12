@@ -83,7 +83,7 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str, token: str = Qu
         
         # Send current code to new connection
         if room.code:
-            await websocket.send_json({"type": "code", "content": room.code})
+            await websocket.send_text(room.code)
         
         # Main message loop
         while True:
@@ -99,7 +99,7 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str, token: str = Qu
             for conn in connections[room_id]:
                 if conn["ws"] is not websocket:
                     try:
-                        await conn["ws"].send_json({"type": "code", "content": data})
+                        await conn["ws"].send_text(data)
                     except:
                         pass
     
