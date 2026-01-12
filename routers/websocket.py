@@ -49,23 +49,21 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str, token: str = Qu
         connection_info = {"ws": websocket, "user_id": user_id}
         connections[room_id].append(connection_info)
         
-        # Add user to participants if authenticated and not already a participant
+        # Check if user is a participant or admin (must join via API first for private rooms)
         if user_id:
             existing_participant = db.query(RoomParticipant).filter(
                 RoomParticipant.room_id == room_id,
                 RoomParticipant.user_id == user_id
             ).first()
             
-            if not existing_participant:
-                participant = RoomParticipant(
-                    id=str(uuid.uuid4()),
-                    room_id=room_id,
-                    user_id=user_id
-                )
-                db.add(participant)
-                db.commit()
+            is_admin = room.admin_id == user_id
             
-            # Get user info
+            # For private rooms, user must be a participant or admin
+            if room.is_private and not existing_participant and not is_admin:
+                await websocket.close(code=4001, reason="Must join room first")
+                return
+            
+            # Get user info for broadcasting
             user = db.query(User).filter(User.id == user_id).first()
             if user:
                 # Broadcast user joined event

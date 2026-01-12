@@ -127,7 +127,7 @@ def list_rooms(
     db: Session = Depends(get_db),
     current_user: Optional[User] = Depends(get_current_user_optional)
 ):
-    """List all public rooms and user's own rooms (if authenticated)."""
+    """List all public rooms, user's own rooms, and joined private rooms (if authenticated)."""
     try:
         print(f"[DEBUG] Fetching rooms. Authenticated: {current_user is not None}")
         
@@ -135,14 +135,30 @@ def list_rooms(
         public_rooms = db.query(Room).filter(Room.is_private == False).all()
         print(f"[DEBUG] Found {len(public_rooms)} public rooms")
         
-        # If authenticated, also get user's own rooms (both public and private)
+        # If authenticated, also get user's own rooms and joined private rooms
         if current_user:
+            # User's own rooms (both public and private)
             user_rooms = db.query(Room).filter(Room.admin_id == current_user.id).all()
             print(f"[DEBUG] Found {len(user_rooms)} user rooms for {current_user.username}")
             
-            # Combine and deduplicate (in case user has public rooms)
+            # Private rooms the user has joined (as participant, not admin)
+            joined_room_ids = db.query(RoomParticipant.room_id).filter(
+                RoomParticipant.user_id == current_user.id
+            ).all()
+            joined_room_ids = [r[0] for r in joined_room_ids]
+            
+            joined_private_rooms = db.query(Room).filter(
+                Room.id.in_(joined_room_ids),
+                Room.is_private == True,
+                Room.admin_id != current_user.id  # Exclude own rooms (already included above)
+            ).all()
+            print(f"[DEBUG] Found {len(joined_private_rooms)} joined private rooms")
+            
+            # Combine and deduplicate
             all_rooms = {room.id: room for room in public_rooms}
             for room in user_rooms:
+                all_rooms[room.id] = room
+            for room in joined_private_rooms:
                 all_rooms[room.id] = room
             
             rooms_to_return = list(all_rooms.values())
@@ -206,7 +222,26 @@ def join_room(
     if not room:
         raise HTTPException(status_code=404, detail="Room not found")
     
-    # Check if already a participant
+    # Admin can always join their own room without password
+    if room.admin_id == current_user.id:
+        # Check if already a participant
+        existing = db.query(RoomParticipant).filter(
+            RoomParticipant.room_id == room_id,
+            RoomParticipant.user_id == current_user.id
+        ).first()
+        
+        if not existing:
+            participant = RoomParticipant(
+                id=str(uuid.uuid4()),
+                room_id=room_id,
+                user_id=current_user.id
+            )
+            db.add(participant)
+            db.commit()
+        
+        return {"message": "Joined room successfully", "roomId": room_id}
+    
+    # Check if already a participant (can rejoin without password)
     existing = db.query(RoomParticipant).filter(
         RoomParticipant.room_id == room_id,
         RoomParticipant.user_id == current_user.id
@@ -215,7 +250,7 @@ def join_room(
     if existing:
         return {"message": "Already a participant", "roomId": room_id}
     
-    # Validate password for private rooms
+    # Validate password for private rooms (only for new non-admin users)
     if room.is_private:
         if not request.password:
             raise HTTPException(
@@ -239,6 +274,7 @@ def join_room(
     db.commit()
     
     return {"message": "Joined room successfully", "roomId": room_id}
+
 
 
 @router.post("/{room_id}/leave")
