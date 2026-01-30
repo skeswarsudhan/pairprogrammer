@@ -3,8 +3,8 @@ import uuid
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from google.auth.transport import requests
-from google.oauth2 import id_token
+# from google.auth.transport import requests
+# from google.oauth2 import id_token
 from pydantic import BaseModel, EmailStr
 from sqlalchemy.orm import Session
 
@@ -16,6 +16,7 @@ from utils.auth_utils import (
     get_password_hash,
     verify_password,
 )
+from utils.email_utils import send_welcome_email
 import os
 from dotenv import load_dotenv
 
@@ -92,6 +93,12 @@ def register(request: RegisterRequest, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(new_user)
     
+    # Send welcome email (non-blocking, won't fail registration if email fails)
+    try:
+        send_welcome_email(new_user.email, new_user.username)
+    except Exception:
+        pass  # Log but don't fail registration if email fails
+    
     # Create access token
     access_token = create_access_token(data={"sub": new_user.id})
     
@@ -139,80 +146,80 @@ def login(request: LoginRequest, db: Session = Depends(get_db)):
     )
 
 
-@router.post("/google", response_model=AuthResponse)
-def google_auth(request: GoogleAuthRequest, db: Session = Depends(get_db)):
-    """Authenticate or register user with Google OAuth."""
-    if not GOOGLE_CLIENT_ID:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Google OAuth not configured"
-        )
+# @router.post("/google", response_model=AuthResponse)
+# def google_auth(request: GoogleAuthRequest, db: Session = Depends(get_db)):
+#     """Authenticate or register user with Google OAuth."""
+#     if not GOOGLE_CLIENT_ID:
+#         raise HTTPException(
+#             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+#             detail="Google OAuth not configured"
+#         )
     
-    try:
-        # Verify the Google token
-        idinfo = id_token.verify_oauth2_token(
-            request.token, 
-            requests.Request(), 
-            GOOGLE_CLIENT_ID
-        )
+#     try:
+#         # Verify the Google token
+#         idinfo = id_token.verify_oauth2_token(
+#             request.token, 
+#             requests.Request(), 
+#             GOOGLE_CLIENT_ID
+#         )
         
-        google_id = idinfo['sub']
-        email = idinfo['email']
-        name = idinfo.get('name', email.split('@')[0])
+#         google_id = idinfo['sub']
+#         email = idinfo['email']
+#         name = idinfo.get('name', email.split('@')[0])
         
-        # Check if user exists with this Google ID
-        user = db.query(User).filter(User.google_id == google_id).first()
+#         # Check if user exists with this Google ID
+#         user = db.query(User).filter(User.google_id == google_id).first()
         
-        if not user:
-            # Check if email already exists
-            user = db.query(User).filter(User.email == email).first()
-            if user:
-                # Link Google account to existing user
-                user.google_id = google_id
-            else:
-                # Create new user
-                user_id = str(uuid.uuid4())
-                username = name.replace(" ", "_").lower()
+#         if not user:
+#             # Check if email already exists
+#             user = db.query(User).filter(User.email == email).first()
+#             if user:
+#                 # Link Google account to existing user
+#                 user.google_id = google_id
+#             else:
+#                 # Create new user
+#                 user_id = str(uuid.uuid4())
+#                 username = name.replace(" ", "_").lower()
                 
-                # Ensure unique username
-                base_username = username
-                counter = 1
-                while db.query(User).filter(User.username == username).first():
-                    username = f"{base_username}_{counter}"
-                    counter += 1
+#                 # Ensure unique username
+#                 base_username = username
+#                 counter = 1
+#                 while db.query(User).filter(User.username == username).first():
+#                     username = f"{base_username}_{counter}"
+#                     counter += 1
                 
-                user = User(
-                    id=user_id,
-                    email=email,
-                    username=username,
-                    google_id=google_id,
-                    password_hash=None  # OAuth users don't have password
-                )
-                db.add(user)
+#                 user = User(
+#                     id=user_id,
+#                     email=email,
+#                     username=username,
+#                     google_id=google_id,
+#                     password_hash=None  # OAuth users don't have password
+#                 )
+#                 db.add(user)
             
-            db.commit()
-            db.refresh(user)
+#             db.commit()
+#             db.refresh(user)
         
-        # Create access token
-        access_token = create_access_token(data={"sub": user.id})
+#         # Create access token
+#         access_token = create_access_token(data={"sub": user.id})
         
-        return AuthResponse(
-            access_token=access_token,
-            token_type="bearer",
-            user={
-                "id": user.id,
-                "email": user.email,
-                "username": user.username,
-                "google_id": user.google_id
-            }
-        )
+#         return AuthResponse(
+#             access_token=access_token,
+#             token_type="bearer",
+#             user={
+#                 "id": user.id,
+#                 "email": user.email,
+#                 "username": user.username,
+#                 "google_id": user.google_id
+#             }
+#         )
         
-    except ValueError as e:
-        # Invalid token
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=f"Invalid Google token: {str(e)}"
-        )
+#     except ValueError as e:
+#         # Invalid token
+#         raise HTTPException(
+#             status_code=status.HTTP_401_UNAUTHORIZED,
+#             detail=f"Invalid Google token: {str(e)}"
+#         )
 
 
 @router.get("/me", response_model=UserResponse)
